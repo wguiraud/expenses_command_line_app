@@ -17,38 +17,6 @@ def convert_amount_argument_to_string(amount_argument)
   amount_argument.join(" ")
 end
 
-def connect_to_database
-  db = PG.connect(dbname: DATABASE_NAME)
-end
-
-def list_expenses
-  db = connect_to_database
-
-  result = db.exec("SELECT * FROM expenses")
-  result.each do |tuple|
-    columns = [ tuple["id"].rjust(3),
-                tuple["created_on"].rjust(10),
-                tuple["amount"].rjust(12),
-                tuple["memo"] ]
-    puts columns.join(" | ")
-  end
-end
-
-def display_help
-  puts <<~HELP
-  An expense recording system
-
-  Commands:
-
-  add AMOUNT MEMO - record a new expense
-  clear - delete all expenses
-  list - list all expenses
-  delete NUMBER - remove expense with id NUMBER
-  search QUERY - list expenses with a matching memo field
-  HELP
-end
-
-
 def add_new_expense
   db = connect_to_database
 
@@ -67,8 +35,60 @@ def add_new_expense
 
 end
 
+class ExpenseManager
+  def initialize
+    @db = connect_to_database
+  end
+
+  def list_expenses
+    read_expenses
+  end
+
+  def display_help
+    puts <<~HELP
+  An expense recording system
+
+  Commands:
+
+  add AMOUNT MEMO - record a new expense
+  clear - delete all expenses
+  list - list all expenses
+  delete NUMBER - remove expense with id NUMBER
+  search QUERY - list expenses with a matching memo field
+  HELP
+  end
+
+  private
+
+  def connect_to_database
+    PG.connect(dbname: DATABASE_NAME)
+  rescue PG::ConnectionBad => e
+    puts e.message
+    exit(1)
+  rescue PG::Error => e
+    puts e.message
+    exit(1)
+  end
+
+  def read_expenses
+    result = connect_to_database.exec("SELECT * FROM expenses")
+    result.each do |tuple|
+      columns = [ tuple["id"].rjust(3),
+                  tuple["created_on"].rjust(10),
+                  tuple["amount"].rjust(12),
+                  tuple["memo"] ]
+      puts columns.join(" | ")
+    end
+  rescue PG::Error => e
+    puts e.message
+    exit(1)
+  end
+
+end
+
 command_first_argument = ARGV[0]
-new_expense_manager = ExpenseManager.new(DATABASE_NAME)
+
+new_expense_manager = ExpenseManager.new
 
 case command_first_argument
 when 'list' then new_expense_manager.list_expenses
