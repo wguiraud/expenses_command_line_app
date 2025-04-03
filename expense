@@ -1,47 +1,13 @@
 #! /usr/bin/env ruby
 require 'pg'
+require 'date'
 require 'pry'
 
 DATABASE_NAME = 'expense'
 
-
-def valid_amount?(amount)
-  amount.match?(/^[0-9]{1,4}\.[0-9]{1,2}$/)
-end
-
-def valid_memo?(memo)
-  memo.match?(/^[a-zA-Z]+ ?[a-zA-Z]+$/)
-end
-
-def convert_amount_argument_to_string(amount_argument)
-  amount_argument.join(" ")
-end
-
-def add_new_expense
-  db = connect_to_database
-
-  amount = ARGV[1]
-  memo = convert_amount_argument_to_string(ARGV[2..])
-
-  if valid_amount?(amount) && valid_memo?(memo)
-    query = "INSERT INTO expenses (amount, memo, created_on) VALUES ($1, $2, $3);"
-    params = ["#{amount}", "#{memo}", "NOW()"]
-
-    db.exec_params(query, params)
-    puts "The expense has been added successfully."
-  else
-    puts "You must provide an valid amount and a valid memo."
-  end
-
-end
-
 class ExpenseManager
   def initialize
     @db = connect_to_database
-  end
-
-  def list_expenses
-    read_expenses
   end
 
   def display_help
@@ -58,7 +24,22 @@ class ExpenseManager
   HELP
   end
 
+  def list_expenses
+    read_expenses
+  end
+
+  def add_new_expense(amount, memo)
+    if valid_input?(amount, memo)
+      query = "INSERT INTO expenses (amount, memo, created_on) VALUES ($1, $2, $3);"
+      params = ["#{amount}", "#{memo}", "#{Date.today}"]
+      execute_query(query, params)
+    else
+      puts "Invalid amount or memo."
+    end
+  end
+
   private
+  attr_reader :db
 
   def connect_to_database
     PG.connect(dbname: DATABASE_NAME)
@@ -71,7 +52,7 @@ class ExpenseManager
   end
 
   def read_expenses
-    result = connect_to_database.exec("SELECT * FROM expenses")
+    result = db.exec("SELECT * FROM expenses")
     result.each do |tuple|
       columns = [ tuple["id"].rjust(3),
                   tuple["created_on"].rjust(10),
@@ -84,13 +65,55 @@ class ExpenseManager
     exit(1)
   end
 
+  def execute_query(query, params)
+    db.exec_params(query, params)
+    puts "The expense has been added successfully."
+  rescue PG::Error => e
+    puts "Error adding expense: #{e.message}"
+    exit(1)
+  end
+
+  def valid_input?(amount, memo)
+    valid_amount?(amount) && valid_memo?(convert_memo_array_to_string(memo))
+  end
+
+  def valid_amount?(amount)
+    begin
+    amount.match?(/^[0-9]{1,4}\.[0-9]{1,2}$/)
+    rescue NoMethodError => e
+      puts "Invalid amount: #{e.message}"
+      exit(1)
+    end
+  end
+
+  def valid_memo?(memo)
+    begin
+      memo.match?(/^[a-zA-Z]+ ?[a-zA-Z]+$/)
+    rescue NoMethodError => e
+      puts "Invalid memo: #{e.message}"
+      exit(1)
+    end
+  end
+
+  def convert_memo_array_to_string(memo)
+    begin
+      memo.join(" ")
+    rescue NoMethodError => e
+      puts "Can't convert memo into a string: #{e.message}"
+      exit(1)
+    end
+  end
+
 end
 
-command_first_argument = ARGV[0]
+command = ARGV[0]
+amount = ARGV[1]
+memo = ARGV[2..]
+
 
 new_expense_manager = ExpenseManager.new
 
-case command_first_argument
+case command
 when 'list' then new_expense_manager.list_expenses
 when 'add' then new_expense_manager.add_new_expense(amount, memo)
 else
