@@ -1,0 +1,76 @@
+#! /usr/bin/env ruby
+require 'pg'
+require 'pry'
+
+DATABASE_NAME = 'expense'
+command_first_argument = ARGV[0]
+
+
+def valid_amount?(amount)
+  amount.match?(/^[0-9]{1,4}\.[0-9]{1,2}$/)
+end
+
+def valid_memo?(memo)
+  memo.match?(/^[a-zA-Z]+ ?[a-zA-Z]+$/)
+end
+
+def convert_amount_argument_to_string(amount_argument)
+  amount_argument.join(" ")
+end
+
+def connect_to_database
+  db = PG.connect(dbname: DATABASE_NAME)
+end
+
+def list_expenses
+  db = connect_to_database
+
+  result = db.exec("SELECT * FROM expenses")
+  result.each do |tuple|
+    columns = [ tuple["id"].rjust(3),
+                tuple["created_on"].rjust(10),
+                tuple["amount"].rjust(12),
+                tuple["memo"] ]
+    puts columns.join(" | ")
+  end
+end
+
+def display_help
+  puts <<~HELP
+  An expense recording system
+
+  Commands:
+
+  add AMOUNT MEMO - record a new expense
+  clear - delete all expenses
+  list - list all expenses
+  delete NUMBER - remove expense with id NUMBER
+  search QUERY - list expenses with a matching memo field
+  HELP
+end
+
+
+def add_new_expense
+  db = connect_to_database
+
+  amount = ARGV[1]
+  memo = convert_amount_argument_to_string(ARGV[2..])
+
+  if valid_amount?(amount) && valid_memo?(memo)
+    query = "INSERT INTO expenses (amount, memo, created_on) VALUES ($1, $2, $3);"
+    params = ["#{amount}", "#{memo}", "NOW()"]
+
+    db.exec_params(query, params)
+    puts "The expense has been added successfully."
+  else
+    puts "You must provide an valid amount and a valid memo."
+  end
+
+end
+
+case command_first_argument
+when 'list' then list_expenses
+when 'add' then add_new_expense
+else
+  display_help
+end
