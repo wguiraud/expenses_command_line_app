@@ -8,6 +8,7 @@ DATABASE_NAME = 'expense'
 class ExpenseManager
   def initialize
     @db = connect_to_database
+    at_exit { @db.close if @db }
   end
 
   def display_help
@@ -29,12 +30,14 @@ class ExpenseManager
   end
 
   def add_new_expense(amount, memo)
-    if valid_input?(amount, memo)
-      query = "INSERT INTO expenses (amount, memo, created_on) VALUES ($1, $2, $3);"
-      params = ["#{amount}", "#{memo}", "#{Date.today}"]
-      execute_query(query, params)
+    amount, preprocessed_memo = preprocessed_input(amount, memo)
+
+    valid_result = validate_expense(amount, preprocessed_memo)
+
+    if valid_result[:valid]
+      save_expense(amount, preprocessed_memo)
     else
-      puts "Invalid amount or memo."
+      puts valid_result[:error]
     end
   end
 
@@ -67,49 +70,53 @@ class ExpenseManager
 
   def execute_query(query, params)
     db.exec_params(query, params)
+  end
+
+  def preprocessed_input(amount, memo)
+    processed_memo = memo.is_a?(Array) ? memo.join(" ") : memo
+    [amount, processed_memo]
+  end
+
+  # Validation-related method - only concerned with validating inputs
+  def validate_expense(preprocessed_amount, preprocessed_memo)
+    return { valid: false, error: "Amount cannot be empty." } if
+      preprocessed_amount.nil? || preprocessed_amount.empty?
+
+    return { valid: false, error: "Memo cannot be empty." } if
+      preprocessed_memo.nil? || preprocessed_memo.empty?
+
+    return { valid: false, error: "Invalid amount format. Use format like
+2341.23" } if invalid_amount?(preprocessed_amount)
+
+    return { valid: false, error: "Invalid memo format" } if
+      invalid_memo?(preprocessed_memo)
+
+    { valid: true }
+  end
+
+  #  # Database-related method - only concerned with saving data
+  def save_expense(amount, preprocessed_memo)
+    query = "INSERT INTO expenses (amount, memo, created_on) VALUES ($1, $2, $3);"
+    params = ["#{amount}", "#{preprocessed_memo}", "#{Date.today}"]
+
+    execute_query(query, params)
     puts "The expense has been added successfully."
   rescue PG::Error => e
     puts "Error adding expense: #{e.message}"
-    exit(1)
   end
 
-  def valid_input?(amount, memo)
-    valid_amount?(amount) && valid_memo?(convert_memo_array_to_string(memo))
+  def invalid_amount?(amount)
+    !amount.match?(/^[0-9]{1,4}\.[0-9]{1,2}$/)
   end
 
-  def valid_amount?(amount)
-    begin
-    amount.match?(/^[0-9]{1,4}\.[0-9]{1,2}$/)
-    rescue NoMethodError => e
-      puts "Invalid amount: #{e.message}"
-      exit(1)
-    end
+  def invalid_memo?(memo)
+    !memo.match?(/^[a-zA-Z]{1,20} ?[a-zA-Z]{1,20}$/)
   end
-
-  def valid_memo?(memo)
-    begin
-      memo.match?(/^[a-zA-Z]+ ?[a-zA-Z]+$/)
-    rescue NoMethodError => e
-      puts "Invalid memo: #{e.message}"
-      exit(1)
-    end
-  end
-
-  def convert_memo_array_to_string(memo)
-    begin
-      memo.join(" ")
-    rescue NoMethodError => e
-      puts "Can't convert memo into a string: #{e.message}"
-      exit(1)
-    end
-  end
-
 end
 
 command = ARGV[0]
 amount = ARGV[1]
 memo = ARGV[2..]
-
 
 new_expense_manager = ExpenseManager.new
 
