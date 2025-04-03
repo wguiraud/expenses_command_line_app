@@ -3,7 +3,6 @@ require 'pg'
 require 'pry'
 
 DATABASE_NAME = 'expense'
-command_first_argument = ARGV[0]
 
 
 def valid_amount?(amount)
@@ -68,9 +67,12 @@ def add_new_expense
 
 end
 
+command_first_argument = ARGV[0]
+new_expense_manager = ExpenseManager.new(DATABASE_NAME)
+
 case command_first_argument
-when 'list' then list_expenses
-when 'add' then add_new_expense
+when 'list' then new_expense_manager.list_expenses
+when 'add' then new_expense_manager.add_new_expense(amount, memo)
 else
-  display_help
+  new_expense_manager.display_help
 end
