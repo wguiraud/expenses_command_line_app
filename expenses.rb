@@ -3,7 +3,14 @@ require 'pg'
 require 'date'
 require 'pry'
 
-DATABASE_NAME = 'expense'
+module ExpenseConfig
+  DATABASE_NAME = 'expense'
+  DATABASE_TEST_NAME = 'expenses_test'
+
+  def self.database_name
+    ENV["EXPENSES_ENV"] == "test" ? DATABASE_TEST_NAME : DATABASE_NAME
+  end
+end
 
 class ExpenseManager
   def initialize
@@ -13,7 +20,7 @@ class ExpenseManager
 
   def display_help
     puts <<~HELP
-  An expense recording system
+  An expenses recording system
 
   Commands:
 
@@ -45,7 +52,7 @@ class ExpenseManager
   attr_reader :db
 
   def connect_to_database
-    PG.connect(dbname: DATABASE_NAME)
+    PG.connect(dbname: ExpenseConfig.database_name)
   rescue PG::ConnectionBad => e
     puts e.message
     exit(1)
@@ -96,7 +103,8 @@ class ExpenseManager
 
   #  # Database-related method - only concerned with saving data
   def save_expense(amount, preprocessed_memo)
-    query = "INSERT INTO expenses (amount, memo, created_on) VALUES ($1, $2, $3);"
+    query = "INSERT INTO expenses (amount, memo, created_on) VALUES ($1, $2,
+$3);"
     params = ["#{amount}", "#{preprocessed_memo}", "#{Date.today}"]
 
     execute_query(query, params)
