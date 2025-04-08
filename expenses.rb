@@ -37,15 +37,11 @@ class ExpenseManager
   end
 
   def add_new_expense(amount, memo)
-    amount, preprocessed_memo = preprocessed_input(amount, memo)
+    save_expense(amount, memo)
+  end
 
-    valid_result = validate_expense(amount, preprocessed_memo)
-
-    if valid_result[:valid]
-      save_expense(amount, preprocessed_memo)
-    else
-      puts valid_result[:error]
-    end
+  def close
+    @db.close
   end
 
   private
@@ -62,7 +58,8 @@ class ExpenseManager
   end
 
   def read_expenses
-    result = db.exec("SELECT * FROM expenses")
+    table_name = db.quote_ident("expenses")
+    result = db.exec("SELECT * FROM #{table_name}")
     result.each do |tuple|
       columns = [ tuple["id"].rjust(3),
                   tuple["created_on"].rjust(10),
@@ -79,6 +76,48 @@ class ExpenseManager
     db.exec_params(query, params)
   end
 
+  #  # Database-related method - only concerned with saving data
+  def save_expense(amount, preprocessed_memo)
+    query = "INSERT INTO expenses (amount, memo, created_on) VALUES ($1, $2,
+$3);"
+    params = ["#{amount}", "#{preprocessed_memo}", "#{Date.today}"]
+
+    execute_query(query, params)
+    puts "The expense has been added successfully."
+  rescue PG::Error => e
+    puts "Error adding expense: #{e.message}"
+  end
+end
+
+class CLI
+  def initialize
+    @application = ExpenseManager.new
+  end
+
+  def run(arguments = ARGV)
+    command = arguments[0]
+    amount = arguments[1]
+    memo = arguments[2..]
+
+    amount, preprocessed_memo = preprocessed_input(amount, memo)
+    valid_result = validate_expense(amount, preprocessed_memo)
+
+
+    case command
+    when 'list'
+      @application.list_expenses
+    when 'add'
+      if valid_result[:valid]
+        @application.add_new_expense(amount, preprocessed_memo)
+      else
+        puts valid_result[:error]
+      end
+    else
+      @application.display_help
+    end
+  end
+
+  private
   def preprocessed_input(amount, memo)
     processed_memo = memo.is_a?(Array) ? memo.join(" ") : memo
     [amount, processed_memo]
@@ -101,18 +140,6 @@ class ExpenseManager
     { valid: true }
   end
 
-  #  # Database-related method - only concerned with saving data
-  def save_expense(amount, preprocessed_memo)
-    query = "INSERT INTO expenses (amount, memo, created_on) VALUES ($1, $2,
-$3);"
-    params = ["#{amount}", "#{preprocessed_memo}", "#{Date.today}"]
-
-    execute_query(query, params)
-    puts "The expense has been added successfully."
-  rescue PG::Error => e
-    puts "Error adding expense: #{e.message}"
-  end
-
   def invalid_amount?(amount)
     !amount.match?(/^[0-9]{1,4}\.[0-9]{1,2}$/)
   end
@@ -120,17 +147,7 @@ $3);"
   def invalid_memo?(memo)
     !memo.match?(/^[a-zA-Z]{1,20} ?[a-zA-Z]{1,20}$/)
   end
+
 end
 
-command = ARGV[0]
-amount = ARGV[1]
-memo = ARGV[2..]
-
-new_expense_manager = ExpenseManager.new
-
-case command
-when 'list' then new_expense_manager.list_expenses
-when 'add' then new_expense_manager.add_new_expense(amount, memo)
-else
-  new_expense_manager.display_help
-end
+CLI.new.run
