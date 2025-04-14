@@ -8,7 +8,7 @@ require 'io/console'
 
 # Rails style configuration module
 module ExpenseConfig
-  DATABASE_NAME = 'expense'
+  DATABASE_NAME = 'expenses'
   DATABASE_TEST_NAME = 'expenses_test'
 
   def self.database_name
@@ -21,13 +21,14 @@ end
 class ExpenseData
   def initialize
     @db = connect_to_database
+    setup_schema
   end
 
   def display_help
     puts <<~HELP
       An expenses recording system
-
       Commands:
+
 
       add AMOUNT MEMO - record a new expense
       clear - delete all expenses
@@ -54,21 +55,43 @@ class ExpenseData
   end
 
   def close
-    @db.close
+    db.close
   end
 
   def delete_all_expenses_from_database
-    @db.exec('DELETE FROM expenses;')
+    table_name = @db.quote_ident("expenses")
+    db.exec("DELETE FROM #{table_name};")
     puts "All expenses have been deleted."
   end
 
   def reset_sequence
-    @db.exec('ALTER SEQUENCE expenses_id_seq RESTART WITH 1')
+    db.exec('ALTER SEQUENCE expenses_id_seq RESTART WITH 1')
   end
 
-  attr_reader :db
 
   private
+  attr_reader :db
+
+  def setup_schema
+    result = db.exec <<~query
+      SELECT COUNT(*) FROM information_schema.tables 
+      WHERE table_schema = 'public' AND table_name = 'expenses';
+      query
+
+    if result.column_values(0).first == "0"
+      new_query = <<~new_query
+      CREATE TABLE expenses(
+      id serial PRIMARY KEY,
+      amount numeric(6,2) NOT NULL,
+      memo text NOT NULL,
+      created_on date NOT NULL);
+
+      ALTER TABLE expenses
+      ADD CONSTRAINT positive_amount CHECK ( amount >= 0.01 );
+      new_query
+      db.exec(query)
+    end
+ end
 
   def connect_to_database
     PG.connect(dbname: ExpenseConfig.database_name)
@@ -83,10 +106,11 @@ class ExpenseData
   def read_expenses
     table_name = db.quote_ident('expenses')
     result = db.exec("SELECT * FROM #{table_name}")
+
     if result.cmd_tuples > 0
-      format_result(result)
+      display_result(result)
     else
-      puts "No expenses found."
+      puts "There are no expenses."
     end
   rescue PG::Error => e
     puts e.message
@@ -118,7 +142,7 @@ $3);"
     if result.values.empty?
       puts 'No record found for this expense.'
     else
-      format_result(result)
+      display_result(result)
     end
   rescue PG::Error => e
     puts e.message
@@ -139,23 +163,43 @@ $3);"
       execute_query(query, params)
 
       puts 'The following expense has been deleted:'
-      format_result(expense_to_delete)
+      display_result(expense_to_delete)
     else
       puts "The expense with id #{id} doesn't exist in the database."
     end
   rescue PG::Error => e
     puts "Error removing expense: #{e.message}"
   end
+  def display_result(result)
 
-  def format_result(result)
+    display_count(result)
+
     result.each do |tuple|
       columns = [tuple['id'].rjust(3),
                  tuple['created_on'].rjust(10),
                  tuple['amount'].rjust(12),
                  tuple['memo']]
       puts columns.join(' | ')
+
+    end
+    puts "-" * 50
+
+    amount_sum = result.field_values("amount").map(&:to_f).sum
+
+    puts "Total #{format('%.2f', amount_sum.to_s).rjust(25)}"
+  end
+
+  def display_count(result)
+    count = result.cmd_tuples
+    if count == 0
+      puts "There are no expenses."
+    elsif count == 1
+      puts "There is 1 expense."
+    else
+      puts "There are #{count} expenses."
     end
   end
+
 end
 
 # Class responsible for processing CLI commands and arguments

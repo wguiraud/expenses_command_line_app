@@ -7,11 +7,6 @@ require 'pry'
 require_relative 'expenses'
 
 ENV['EXPENSES_ENV'] = 'test'
-class StringIO
-  def getch
-    self.getc
-  end
-end
 
 # The CLITest class is responsible for testing the processing of CLI arguments
 class CLITest < Minitest::Test
@@ -78,7 +73,7 @@ class CLITest < Minitest::Test
     assert_output(/^Invalid id format.\n$/) { @cli.run(%w[delete abc]) }
   end
 
-  def test_removing_all_expenses_with_arguments
+  def test_clear_command_invalid_input
     @application.add_new_expense('21.32', 'oil filter')
     @application.add_new_expense('9921.32', 'cheap car')
     @application.add_new_expense('4231.32', 'cheap bike')
@@ -86,7 +81,7 @@ class CLITest < Minitest::Test
     assert_output(/^The clear command doesn't take any arguments\.\n$/) { @cli.run(%w[clear 23423]) }
   end
 
-  def test_removing_all_expenses_without_arguments_and_n_as_sure
+  def test_clear_command_not_confirmed
     @application.add_new_expense('21.32', 'oil filter')
     @application.add_new_expense('9921.32', 'cheap car')
     @application.add_new_expense('4231.32', 'cheap bike')
@@ -98,10 +93,9 @@ class CLITest < Minitest::Test
     ensure
       $stdin = original_stdin
     end
-
   end
 
-  def test_removing_all_expenses_without_arguments_and_y_as_sure
+  def test_clear_command_confirmed
     @application.add_new_expense('21.32', 'oil filter')
     @application.add_new_expense('9921.32', 'cheap car')
     @application.add_new_expense('4231.32', 'cheap bike')
@@ -114,6 +108,8 @@ class CLITest < Minitest::Test
       $stdin = original_stdin
     end
 
+    @application.list_expenses
+    assert_output(/^There are no expenses.$/) { @cli.run(%w[list]) }
   end
 
 end
